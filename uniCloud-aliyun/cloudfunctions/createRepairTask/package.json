@@ -1,0 +1,11 @@
+{
+  "name": "createRepairTask",
+  "version": "1.0.0",
+  "description": "Create an AI image repair task",
+  "main": "index.js",
+  "cloudfunction-config": {
+    "timeout": 120,
+    "memorySize": 512
+  },
+  "dependencies": {}
+}

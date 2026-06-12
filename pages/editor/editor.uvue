@@ -1,0 +1,289 @@
+<template>
+  <view class="page">
+    <view class="preview-card">
+      <image class="source" :src="currentImage" mode="aspectFit"></image>
+    </view>
+
+    <view class="status">
+      <text class="status-title">自动 AI 图片修复</text>
+      <text class="status-copy">已选择 {{ imageList.length }} 张图片。点击开始后会按顺序上传并修复，当前进度 {{ progressText }}。</text>
+    </view>
+
+    <scroll-view class="thumbs" scroll-x="true">
+      <view class="thumb-row">
+        <view
+          v-for="(item, index) in imageList"
+          :key="index"
+          class="thumb"
+          :class="{ active: index == currentIndex }"
+          @click="selectImage(index)"
+        >
+          <image class="thumb-image" :src="item" mode="aspectFill"></image>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view v-if="adRequired" class="ad-note">
+      <text class="ad-note-text">批量修复前需要完整观看一次激励视频，用于分摊 AI 处理成本。</text>
+    </view>
+
+    <button class="submit" type="primary" :disabled="submitting" @click="submitRepair">{{ submitting ? '批量处理中...' : submitButtonText }}</button>
+  </view>
+</template>
+
+<script lang="uts">
+  // 配置激励视频广告位后，App 端会要求用户看完广告再开始批量修复。
+  const REWARDED_VIDEO_ADPID = ''
+
+  // 前端在页面间传递的单张图片修复结果结构。
+  type RepairResult = {
+    source: string
+    taskId: string
+    status: string
+    resultImageUrl: string
+    errorMessage: string
+  }
+
+  export default {
+    data() {
+      return {
+        imageList: [] as string[],
+        currentIndex: 0,
+        submitting: false,
+        progressText: '0/0',
+        rewardedVideoAd: null as any | null,
+        adLoaded: false
+      }
+    },
+    computed: {
+      currentImage(): string {
+        if (this.imageList.length == 0) return ''
+        return this.imageList[this.currentIndex]
+      },
+      adRequired(): boolean {
+        return REWARDED_VIDEO_ADPID.length > 0
+      },
+      adEnabled(): boolean {
+        return REWARDED_VIDEO_ADPID.length > 0
+      },
+      submitButtonText(): string {
+        return this.adRequired ? '观看广告并开始修复' : '开始 AI 修复'
+      }
+    },
+    onLoad(query) {
+      // 优先读取首页写入的批量图片缓存；兼容旧的单图 src 参数入口。
+      const rawAny = uni.getStorageSync('repair_batch_sources')
+      const raw = rawAny == null ? '' : rawAny as string
+      if (raw.length > 0) {
+        this.imageList = this.decodePaths(raw)
+      }
+      this.progressText = '0/' + this.imageList.length
+      this.initRewardAd()
+    },
+    methods: {
+      decodePaths(raw: string): string[] {
+        // 与首页 encodePaths 对应，把缓存字符串恢复成图片本地路径数组。
+        const result: string[] = []
+        const parts = raw.split('|')
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i].length > 0) result.push(decodeURIComponent(parts[i]) as string)
+        }
+        return result
+      },
+      encodeResult(item: RepairResult): string {
+        // 结果页通过本地缓存读取批量结果，这里把每个字段编码后拼成一行。
+        return encodeURIComponent(item.source) + ',' + encodeURIComponent(item.taskId) + ',' + encodeURIComponent(item.status) + ',' + encodeURIComponent(item.resultImageUrl) + ',' + encodeURIComponent(item.errorMessage)
+      },
+      encodeResults(items: RepairResult[]): string {
+        const rows: string[] = []
+        for (let i = 0; i < items.length; i++) {
+          rows.push(this.encodeResult(items[i]))
+        }
+        return rows.join('|')
+      },
+      initRewardAd() {
+        if (!this.adEnabled) return
+        // 广告位配置后再接入平台广告 SDK；未配置时避免 Android 云打包编译广告 API。
+      },
+      async requireRewardAd(): Promise<boolean> {
+        // H5 环境无法播放 App 激励视频，直接放行；App 端必须配置广告位。
+        if (!this.adEnabled) {
+          return true
+        }
+        uni.showToast({ title: '广告功能暂未接入，请先清空广告位或接入广告 SDK', icon: 'none' })
+        return false
+      },
+      selectImage(index: number) {
+        if (this.submitting) return
+        this.currentIndex = index
+      },
+      async repairOne(imagePath: string, index: number): Promise<RepairResult> {
+        // 每张图先上传到 uniCloud 云存储，云函数再用 fileID 换取公网临时地址给 AI 服务。
+        const uploadRes = await uniCloud.uploadFile({
+          filePath: imagePath,
+          cloudPath: 'repair/source-' + Date.now() + '-' + index + '.jpg'
+        })
+
+        const res = await uniCloud.callFunction({
+          name: 'createRepairTask',
+          data: {
+            sourceFileID: uploadRes.fileID,
+            sourcePreview: imagePath,
+            mode: 'auto-watermark-repair'
+          }
+        })
+
+        const result = res.result == null ? {} : res.result
+        if (result['code'] !== 0) {
+          // 单张失败不影响整个批次，返回 failed 结果让结果页逐张展示。
+          const message = result['message'] == null ? 'AI 修复任务创建失败' : result['message'] as string
+          return {
+            source: imagePath,
+            taskId: '',
+            status: 'failed',
+            resultImageUrl: '',
+            errorMessage: message
+          } as RepairResult
+        }
+
+        return {
+          source: imagePath,
+          taskId: result['taskId'] == null ? '' : result['taskId'] as string,
+          status: result['status'] == null ? 'success' : result['status'] as string,
+          resultImageUrl: result['resultImageUrl'] == null ? '' : result['resultImageUrl'] as string,
+          errorMessage: ''
+        } as RepairResult
+      },
+      async submitRepair() {
+        if (this.imageList.length == 0) {
+          uni.showToast({ title: '图片无效', icon: 'none' })
+          return
+        }
+
+        const adPassed = await this.requireRewardAd()
+        if (!adPassed) return
+
+        this.submitting = true
+        const results: RepairResult[] = []
+        uni.showLoading({ title: '正在处理 1/' + this.imageList.length })
+
+        try {
+          // 顺序处理可以降低并发上传和 AI 调用压力，也方便在缩略图中展示当前进度。
+          for (let i = 0; i < this.imageList.length; i++) {
+            this.currentIndex = i
+            this.progressText = i + '/' + this.imageList.length
+            uni.showLoading({ title: '正在处理 ' + (i + 1) + '/' + this.imageList.length })
+            try {
+              const item = await this.repairOne(this.imageList[i], i)
+              results.push(item)
+            } catch (error) {
+              console.log(error)
+              results.push({
+                source: this.imageList[i],
+                taskId: '',
+                status: 'failed',
+                resultImageUrl: '',
+                errorMessage: '上传或修复失败'
+              } as RepairResult)
+            }
+          }
+          this.progressText = this.imageList.length + '/' + this.imageList.length
+          uni.setStorageSync('repair_batch_results', this.encodeResults(results))
+          uni.navigateTo({ url: '/pages/result/result?batch=1' })
+        } finally {
+          uni.hideLoading()
+          this.submitting = false
+        }
+      }
+    }
+  }
+</script>
+
+<style>
+  .page {
+    min-height: 900px;
+    padding: 14px;
+    background-color: #f6f7f9;
+  }
+
+  .preview-card {
+    height: 430px;
+    overflow: hidden;
+    border-radius: 8px;
+    background-color: #161a22;
+  }
+
+  .source {
+    width: 100%;
+    height: 100%;
+  }
+
+  .status,
+  .ad-note {
+    margin-top: 14px;
+    padding: 16px;
+    border-radius: 8px;
+    background-color: #ffffff;
+  }
+
+  .ad-note {
+    background-color: #eef7f2;
+  }
+
+  .status-title {
+    color: #172033;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .status-copy,
+  .ad-note-text {
+    margin-top: 6px;
+    color: #697386;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .ad-note-text {
+    margin-top: 0;
+    color: #395547;
+  }
+
+  .thumbs {
+    margin-top: 12px;
+  }
+
+  .thumb-row {
+    flex-direction: row;
+  }
+
+  .thumb {
+    width: 66px;
+    height: 66px;
+    margin-right: 8px;
+    overflow: hidden;
+    border-width: 2px;
+    border-style: solid;
+    border-color: transparent;
+    border-radius: 8px;
+    background-color: #ffffff;
+  }
+
+  .thumb.active {
+    border-color: #177245;
+  }
+
+  .thumb-image {
+    width: 100%;
+    height: 100%;
+  }
+
+  .submit {
+    margin-top: 16px;
+    height: 48px;
+    border-radius: 8px;
+    background-color: #177245;
+    font-size: 16px;
+    font-weight: 700;
+  }
+</style>

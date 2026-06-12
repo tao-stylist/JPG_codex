@@ -1,0 +1,13 @@
+# Local dependencies and build output
+node_modules/
+unpackage/
+dist/
+.hbuilderx/
+
+# Secrets
+.env
+*.local
+certs/*.jks
+certs/*.keystore
+certs/*.p12
+uniCloud-aliyun/cloudfunctions/*/.env

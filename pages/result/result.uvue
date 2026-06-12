@@ -1,0 +1,326 @@
+<template>
+  <scroll-view class="page" scroll-y="true" :style="{ height: scrollHeight + 'px' }">
+    <view class="content">
+      <view class="header">
+        <text class="title">修复结果</text>
+        <text class="subtitle">共 {{ results.length }} 张，成功 {{ successCount }} 张</text>
+      </view>
+
+      <view v-for="(item, index) in results" :key="index" class="result-card">
+        <view class="card-head">
+          <text class="image-label">图片 {{ index + 1 }}</text>
+          <text class="badge" :class="item.status">{{ getStatusText(item.status) }}</text>
+        </view>
+
+        <view class="image-card">
+          <text class="small-label">原图</text>
+          <image class="preview" :src="item.source" mode="aspectFit"></image>
+        </view>
+
+        <view class="image-card">
+          <text class="small-label">结果图</text>
+          <image v-if="item.resultImageUrl.length > 0" class="preview" :src="item.resultImageUrl" mode="aspectFit"></image>
+          <view v-else class="empty-result">
+            <text class="empty-text">{{ item.errorMessage.length > 0 ? item.errorMessage : '暂无结果' }}</text>
+          </view>
+        </view>
+
+        <button class="save-one" :disabled="item.resultImageUrl.length == 0" @click="saveOne(index)">保存这张</button>
+      </view>
+
+      <view class="buttons">
+        <button class="secondary" @click="backHome">继续处理</button>
+        <button class="primary" type="primary" @click="saveAll">保存全部</button>
+      </view>
+    </view>
+  </scroll-view>
+</template>
+
+<script lang="uts">
+  // 与编辑页保持一致的结果结构，用于展示、轮询和保存。
+  type RepairResult = {
+    source: string
+    taskId: string
+    status: string
+    resultImageUrl: string
+    errorMessage: string
+  }
+
+  export default {
+    data() {
+      return {
+        results: [] as RepairResult[],
+        scrollHeight: 720
+      }
+    },
+    computed: {
+      successCount(): number {
+        let total = 0
+        for (let i = 0; i < this.results.length; i++) {
+          const item = this.results[i]
+          if (item.status == 'success' && item.resultImageUrl.length > 0) total++
+        }
+        return total
+      }
+    },
+    onLoad(query) {
+      const windowInfo = uni.getWindowInfo()
+      this.scrollHeight = windowInfo.windowHeight
+      // 批量修复完成后优先从本地缓存读取结果；保留 taskId 参数兼容单任务入口。
+      const rawAny = uni.getStorageSync('repair_batch_results')
+      const raw = rawAny == null ? '' : rawAny as string
+      if (raw.length > 0) {
+        this.results = this.decodeResults(raw)
+      }
+    },
+    methods: {
+      decodeResults(raw: string): RepairResult[] {
+        // 还原编辑页 encodeResults 生成的缓存字符串，缺失字段使用安全默认值。
+        const list: RepairResult[] = []
+        const rows = raw.split('|')
+        for (let i = 0; i < rows.length; i++) {
+          if (rows[i].length == 0) continue
+          const cols = rows[i].split(',')
+          list.push({
+            source: cols.length > 0 ? decodeURIComponent(cols[0]) as string : '',
+            taskId: cols.length > 1 ? decodeURIComponent(cols[1]) as string : '',
+            status: cols.length > 2 ? decodeURIComponent(cols[2]) as string : 'failed',
+            resultImageUrl: cols.length > 3 ? decodeURIComponent(cols[3]) as string : '',
+            errorMessage: cols.length > 4 ? decodeURIComponent(cols[4]) as string : ''
+          } as RepairResult)
+        }
+        return list
+      },
+      getStatusText(status: string): string {
+        if (status == 'processing' || status == 'pending') return '处理中'
+        if (status == 'failed') return '失败'
+        return '完成'
+      },
+      async fetchTask(index: number) {
+        // 对异步任务进行轻量轮询，直到后端返回 success 或 failed。
+        const item = this.results[index]
+        if (item == null || item.taskId.length == 0) return
+        try {
+          const res = await uniCloud.callFunction({
+            name: 'getRepairTask',
+            data: { taskId: item.taskId }
+          })
+          const data = res.result == null ? {} : res.result
+          if (data['code'] !== 0) {
+            item.status = 'failed'
+            item.errorMessage = data['message'] == null ? '查询修复任务失败' : data['message'] as string
+            return
+          }
+          item.status = data['status'] == null ? item.status : data['status'] as string
+          if (data['resultImageUrl'] != null && (data['resultImageUrl'] as string).length > 0) item.resultImageUrl = data['resultImageUrl'] as string
+          if (item.status == 'pending' || item.status == 'processing') {
+            // 轮询间隔不要太短，避免频繁触发云函数查询。
+            setTimeout(() => {
+              this.fetchTask(index)
+            }, 1800)
+          }
+        } catch (error) {
+          console.log(error)
+        }
+      },
+      backHome() {
+        uni.reLaunch({ url: '/pages/index/index' })
+      },
+      saveImageUrl(imageUrl: string, showSuccess: boolean) {
+        if (imageUrl.length == 0) return
+        // #ifdef H5
+        // H5 没有相册写入能力，引导用户使用浏览器保存图片。
+        uni.showToast({ title: 'H5请长按结果图或使用浏览器保存', icon: 'none' })
+        // #endif
+        // #ifndef H5
+        const saveLocal = (filePath: string) => {
+          uni.saveImageToPhotosAlbum({
+            filePath,
+            success: () => {
+              if (showSuccess) uni.showToast({ title: '已保存', icon: 'success' })
+            },
+            fail: () => uni.showToast({ title: '保存失败，请检查相册权限', icon: 'none' })
+          })
+        }
+        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+          uni.downloadFile({
+            url: imageUrl,
+            success: (res) => {
+              const tempFilePath = res.tempFilePath == null ? '' : res.tempFilePath as string
+              if (res.statusCode == 200 && tempFilePath.length > 0) {
+                saveLocal(tempFilePath)
+              } else {
+                uni.showToast({ title: '图片下载失败', icon: 'none' })
+              }
+            },
+            fail: () => uni.showToast({ title: '图片下载失败', icon: 'none' })
+          })
+        } else {
+          saveLocal(imageUrl)
+        }
+        // #endif
+      },
+      saveOne(index: number) {
+        const item = this.results[index]
+        if (item == null || item.resultImageUrl.length == 0) {
+          uni.showToast({ title: '没有可保存的图片', icon: 'none' })
+          return
+        }
+        this.saveImageUrl(item.resultImageUrl, true)
+      },
+      saveAll() {
+        // 先统计可保存图片，避免没有结果时仍触发保存流程。
+        let count = 0
+        for (let i = 0; i < this.results.length; i++) {
+          if (this.results[i].resultImageUrl.length > 0) count++
+        }
+        if (count == 0) {
+          uni.showToast({ title: '没有可保存的图片', icon: 'none' })
+          return
+        }
+        // #ifdef H5
+        uni.showToast({ title: 'H5请逐张长按结果图保存', icon: 'none' })
+        // #endif
+        // #ifndef H5
+        for (let i = 0; i < this.results.length; i++) {
+          const item = this.results[i]
+          if (item.resultImageUrl.length > 0) {
+            this.saveImageUrl(item.resultImageUrl, false)
+          }
+        }
+        uni.showToast({ title: '已开始保存', icon: 'success' })
+        // #endif
+      }
+    }
+  }
+</script>
+
+<style>
+  .page {
+    background-color: #f6f7f9;
+  }
+
+  .content {
+    padding: 16px 16px 34px;
+  }
+
+  .header {
+    padding: 10px 0 16px;
+  }
+
+  .title {
+    color: #172033;
+    font-size: 28px;
+    font-weight: 700;
+  }
+
+  .subtitle {
+    margin-top: 6px;
+    color: #687386;
+    font-size: 13px;
+  }
+
+  .result-card {
+    margin-bottom: 14px;
+    padding: 12px;
+    border-radius: 8px;
+    background-color: #ffffff;
+  }
+
+  .card-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .image-label {
+    color: #172033;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  .badge {
+    padding: 4px 9px;
+    border-radius: 6px;
+    background-color: #eef7f2;
+    color: #177245;
+    font-size: 12px;
+  }
+
+  .badge.failed {
+    background-color: #fff1f2;
+    color: #be123c;
+  }
+
+  .badge.processing,
+  .badge.pending {
+    background-color: #eef4ff;
+    color: #2563eb;
+  }
+
+  .image-card {
+    margin-top: 8px;
+  }
+
+  .small-label {
+    color: #697386;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .preview,
+  .empty-result {
+    width: 100%;
+    height: 210px;
+    margin-top: 7px;
+    border-radius: 6px;
+    background-color: #111827;
+  }
+
+  .empty-result {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .empty-text {
+    color: #cbd5e1;
+    font-size: 13px;
+  }
+
+  .save-one {
+    margin-top: 10px;
+    height: 40px;
+    border-radius: 8px;
+    background-color: #e9edf2;
+    color: #172033;
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .buttons {
+    flex-direction: row;
+    margin-top: 16px;
+    margin-bottom: 18px;
+  }
+
+  .secondary,
+  .primary {
+    flex: 1;
+    height: 46px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 46px;
+  }
+
+  .secondary {
+    margin-right: 10px;
+    background-color: #e9edf2;
+    color: #172033;
+  }
+
+  .primary {
+    background-color: #177245;
+  }
+</style>

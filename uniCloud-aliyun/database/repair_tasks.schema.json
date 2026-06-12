@@ -1,0 +1,106 @@
+{
+  "bsonType": "object",
+  "required": ["taskId", "sourceFileID", "status", "createdAt", "updatedAt"],
+  "permission": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  },
+  "properties": {
+    "_id": {
+      "description": "ID，系统自动生成"
+    },
+    "taskId": {
+      "bsonType": "string",
+      "description": "本系统修复任务ID"
+    },
+    "provider": {
+      "bsonType": "string",
+      "description": "AI 服务商标识"
+    },
+    "providerTaskId": {
+      "bsonType": "string",
+      "description": "AI 服务商返回的异步任务ID"
+    },
+    "requestId": {
+      "bsonType": "string",
+      "description": "AI 服务商请求ID"
+    },
+    "sourceFileID": {
+      "bsonType": "string",
+      "description": "原图云存储 fileID"
+    },
+    "sourcePreview": {
+      "bsonType": "string",
+      "description": "前端预览地址"
+    },
+    "sourceImageUrl": {
+      "bsonType": "string",
+      "description": "传给 AI 服务的原图临时访问地址"
+    },
+    "mask": {
+      "bsonType": "object",
+      "description": "前端标记生成的蒙版采样数据"
+    },
+    "mode": {
+      "bsonType": "string",
+      "description": "修复模式"
+    },
+    "model": {
+      "bsonType": "string",
+      "description": "AI 模型名称"
+    },
+    "status": {
+      "bsonType": "string",
+      "enum": ["pending", "processing", "success", "failed"],
+      "description": "任务状态"
+    },
+    "resultImageUrl": {
+      "bsonType": "string",
+      "description": "修复结果图片地址"
+    },
+    "mock": {
+      "bsonType": "bool",
+      "description": "是否为占位结果"
+    },
+    "errorMessage": {
+      "bsonType": "string",
+      "description": "失败原因"
+    },
+    "createdAt": {
+      "bsonType": "long",
+      "description": "创建时间"
+    },
+    "updatedAt": {
+      "bsonType": "long",
+      "description": "更新时间"
+    }
+  },
+  "index": [
+    {
+      "IndexName": "taskId_unique",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          {
+            "Name": "taskId",
+            "Direction": "1"
+          }
+        ],
+        "MgoIsUnique": true
+      }
+    },
+    {
+      "IndexName": "providerTaskId",
+      "MgoKeySchema": {
+        "MgoIndexKeys": [
+          {
+            "Name": "providerTaskId",
+            "Direction": "1"
+          }
+        ],
+        "MgoIsUnique": false
+      }
+    }
+  ]
+}

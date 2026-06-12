@@ -1,0 +1,50 @@
+<script lang="uts">
+  // #ifdef APP-ANDROID || APP-HARMONY
+	// 记录第一次返回键时间，用于实现“再按一次退出应用”的双击退出体验。
+	let firstBackTime = 0
+  // #endif
+	export default {
+		onLaunch: function () {
+			console.log('App Launch')
+		},
+		onShow: function () {
+			console.log('App Show')
+		},
+		onHide: function () {
+			console.log('App Hide')
+		},
+		// #ifdef APP-ANDROID || APP-HARMONY
+		onLastPageBackPress: function () {
+			console.log('App LastPageBackPress')
+			// 仅在 Android/Harmony 最后一个页面拦截返回键，2 秒内二次点击才真正退出。
+			if (firstBackTime == 0) {
+				uni.showToast({
+					title: '再按一次退出应用',
+					position: 'bottom',
+				})
+				firstBackTime = Date.now()
+				setTimeout(() => {
+					firstBackTime = 0
+				}, 2000)
+			} else if (Date.now() - firstBackTime < 2000) {
+				firstBackTime = Date.now()
+				uni.exit()
+			}
+		},
+		// #endif
+		onExit: function () {
+			console.log('App Exit')
+		},
+	}
+</script>
+
+<style>
+	/* 每个页面公共样式：补充常用 flex 方向类，便于页面内复用。 */
+	.uni-row {
+		flex-direction: row;
+	}
+
+	.uni-column {
+		flex-direction: column;
+	}
+</style>

@@ -1,0 +1,197 @@
+<template>
+  <view class="page">
+    <view class="hero">
+      <image class="brand-logo" src="/static/app-logo.png" mode="aspectFit"></image>
+      <text class="eyebrow">Image Repair</text>
+      <text class="summary">上传一张或多张图片，让 AI 自动处理水印和明显瑕疵。</text>
+    </view>
+
+    <view class="upload-box" hover-class="upload-box-hover" @click="chooseImage">
+      <view class="upload-icon">
+        <text class="upload-plus">+</text>
+      </view>
+      <text class="upload-title">点击添加图片</text>
+      <text class="upload-desc">支持批量选择，单次最多 9 张，建议单张不超过 10MB</text>
+    </view>
+
+    <label class="notice" @click="toggleAgree">
+      <view class="checkbox" :class="{ checked: agreed }"></view>
+      <text class="notice-text">我确认拥有所选图片的合法使用权，并同意仅将本工具用于授权图片修复。</text>
+    </label>
+
+    <button class="primary" type="primary" @click="chooseImage">选择图片</button>
+  </view>
+</template>
+
+<script lang="uts">
+  export default {
+    data() {
+      return {
+        // 用户必须确认图片授权后才能进入批量修复流程。
+        agreed: false
+      }
+    },
+    methods: {
+      toggleAgree() {
+        this.agreed = !this.agreed
+      },
+      encodePaths(paths: string[]): string {
+        // 使用 encodeURIComponent + 分隔符存储，避免本地路径中的特殊字符破坏页面传参。
+        const encoded: string[] = []
+        for (let i = 0; i < paths.length; i++) {
+          encoded.push(encodeURIComponent(paths[i]) as string)
+        }
+        return encoded.join('|')
+      },
+      chooseImage() {
+        if (!this.agreed) {
+          uni.showToast({ title: '请先确认图片使用授权', icon: 'none' })
+          return
+        }
+
+        uni.chooseImage({
+          count: 9,
+          sizeType: ['compressed'],
+          sourceType: ['album', 'camera'],
+          success: (res) => {
+            const paths = res.tempFilePaths
+            if (paths.length == 0) {
+              uni.showToast({ title: '未选择图片', icon: 'none' })
+              return
+            }
+            // 批量图片路径可能较长，放入本地缓存后再跳转编辑页读取。
+            uni.setStorageSync('repair_batch_sources', this.encodePaths(paths))
+            uni.navigateTo({
+              url: '/pages/editor/editor?batch=1'
+            })
+          },
+          fail: () => {
+            uni.showToast({ title: '未选择图片', icon: 'none' })
+          }
+        })
+      }
+    }
+  }
+</script>
+
+<style>
+  .page {
+    min-height: 900px;
+    padding: 24px 18px 30px;
+    background-color: #f6f7f9;
+  }
+
+  .hero {
+    padding-top: 28px;
+  }
+
+  .brand-logo {
+    width: 82px;
+    height: 82px;
+    margin-bottom: 16px;
+    border-radius: 20px;
+  }
+
+  .eyebrow {
+    color: #177245;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .summary {
+    margin-top: 10px;
+    color: #5c667a;
+    font-size: 15px;
+    line-height: 24px;
+  }
+
+  .upload-box {
+    align-items: center;
+    justify-content: center;
+    min-height: 310px;
+    margin-top: 28px;
+    padding: 28px 18px;
+    border-width: 1px;
+    border-style: dashed;
+    border-color: #9ab7a7;
+    border-radius: 8px;
+    background-color: #ffffff;
+  }
+
+  .upload-box-hover {
+    background-color: #f8fbf9;
+    border-color: #177245;
+  }
+
+  .upload-icon {
+    align-items: center;
+    justify-content: center;
+    width: 74px;
+    height: 74px;
+    border-radius: 37px;
+    background-color: #eef7f2;
+  }
+
+  .upload-plus {
+    color: #177245;
+    font-size: 46px;
+    font-weight: 400;
+    line-height: 74px;
+    text-align: center;
+  }
+
+  .upload-title {
+    margin-top: 18px;
+    color: #172033;
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .upload-desc {
+    margin-top: 8px;
+    color: #7b8494;
+    font-size: 13px;
+    line-height: 20px;
+    text-align: center;
+  }
+
+  .notice {
+    flex-direction: row;
+    align-items: flex-start;
+    margin-top: 18px;
+    padding: 14px;
+    border-radius: 8px;
+    background-color: #eef7f2;
+  }
+
+  .checkbox {
+    width: 20px;
+    height: 20px;
+    margin-top: 1px;
+    border: 2px solid #8bb99f;
+    border-radius: 4px;
+    background-color: #ffffff;
+  }
+
+  .checkbox.checked {
+    background-color: #177245;
+    border-color: #177245;
+  }
+
+  .notice-text {
+    flex: 1;
+    margin-left: 10px;
+    color: #395547;
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  .primary {
+    margin-top: 18px;
+    height: 48px;
+    border-radius: 8px;
+    background-color: #177245;
+    font-size: 16px;
+    font-weight: 700;
+  }
+</style>

@@ -1,0 +1,10 @@
+import App from './App.uvue'
+
+import { createSSRApp } from 'vue'
+export function createApp() {
+	// uni-app x 的应用入口：创建 SSR 应用实例并交给运行时挂载。
+	const app = createSSRApp(App)
+	return {
+		app
+	}
+}

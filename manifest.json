@@ -1,0 +1,76 @@
+{
+	"name": "AI图片修复",
+	"appid": "__UNI__7038928",
+	"description": "基于uni-app的图片区域修复工具",
+	"versionName": "1.0.0",
+	"versionCode": "100",
+	"uni-app-x": {},
+	"quickapp": {},
+	"mp-weixin": {
+		"appid": "",
+		"setting": {
+			"urlCheck": false
+		},
+		"usingComponents": true
+	},
+	"mp-alipay": {
+		"usingComponents": true
+	},
+	"mp-baidu": {
+		"usingComponents": true
+	},
+	"mp-toutiao": {
+		"usingComponents": true
+	},
+	"uniStatistics": {
+		"enable": false
+	},
+	"vueVersion": "3",
+	"app": {
+		"distribute": {
+			"icons": {
+				"android": {
+					"hdpi": "static/app-logo.png",
+					"xhdpi": "static/app-logo.png",
+					"xxhdpi": "static/app-logo.png",
+					"xxxhdpi": "static/app-logo.png"
+				}
+			},
+			"modules": {
+				"uni-ad": {}
+			}
+		}
+	},
+	"app-android": {
+		"distribute": {
+			"modules": {
+				"uni-ad": {
+					"gdt": {}
+				}
+			},
+			"icons": {
+				"hdpi": "static/app-logo.png",
+				"xhdpi": "static/app-logo.png",
+				"xxhdpi": "static/app-logo.png",
+				"xxxhdpi": "static/app-logo.png"
+			},
+			"splashScreens": {
+				"default": {}
+			}
+		}
+	},
+	"app-ios": {
+		"distribute": {
+			"modules": {},
+			"icons": {
+				"appstore": "static/app-logo.png"
+			},
+			"splashScreens": {}
+		}
+	},
+	"web": {
+		"router": {
+			"mode": ""
+		}
+	}
+}
